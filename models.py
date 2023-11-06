@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import math
 from deepsysid.models.switching.switchrnn import SwitchingLSTMBaseModel, SwitchingLSTMBaseModelConfig
-from deepsysid.networks.switching import SwitchingBaseLSTM, SwitchingLSTMOutput
+from deepsysid.networks.switching import SwitchingBaseLSTM, SwitchingLSTMOutput, UnconstrainedSwitchingLSTM
 import torch.nn as nn
 
 class ControllableReLiNet(SwitchingBaseLSTM):
@@ -95,14 +95,11 @@ class ControllableReLiNet(SwitchingBaseLSTM):
             for t in range(l):
                 "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
                 B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0),3,dim=2))[t,:,:]
-        B= B_ReLiNet
-        B_ReLiNet = torch.reshape(
+
+        B[:, l+1:, :, :] = torch.reshape(
             self.gen_B.forward(x),
-            (batch_size, sequence_length, self.state_dim, self.control_dim),
+            (batch_size, sequence_length-l, self.state_dim, self.control_dim),
         )
-
-
-
 
         """
         Erzeugen der Input Matrizen, neue Version (Einsen nur auf der Diagonale)
@@ -138,10 +135,6 @@ class ControllableReLiNet(SwitchingBaseLSTM):
         """
         Pseudo Code Methode 3(2 Matrizen full rank):
         """
-        B = torch.reshape(
-            self.gen_B.forward(x),
-            (batch_size, sequence_length, self.state_dim, self.control_dim),
-        )
 
         states = torch.zeros(
             size=(batch_size, sequence_length, self.state_dim), device=control.device
