@@ -86,15 +86,15 @@ class ControllableReLiNet(SwitchingBaseLSTM):
         n = self.state_dimension
         m = self.control_dimension
         l = math.ceil(n/m)
-        l = (int) (n/m + 0.9999)
         K_c = torch.zeros(n, l * m)
         B = torch.zeros(batch_size, sequence_length, self.state_dim, self.control_dim)
 
+        K_c[:, :n] = torch.eye(n)
+
         for batch in batch_size:
-            K_c[:, :n] = torch.eye(n)
             for t in range(l):
                 "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
-                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0),3,dim=2))[t,:,:]
+                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0), 3, dim=2))[t, :, :]
 
         B[:, l+1:, :, :] = torch.reshape(
             self.gen_B.forward(x),
@@ -102,17 +102,34 @@ class ControllableReLiNet(SwitchingBaseLSTM):
         )
 
         """
+        method 3: construction of K_c via multiplication
+
+        for batch in batch_size:
+            K_c[:, :n] = torch.eye(n)
+            for t in range(l):
+                "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
+                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0), 3, dim=2))[t, :, :]
+
+        B[:, l+1:, :, :] = torch.reshape(
+            self.gen_B.forward(x),
+            (batch_size, sequence_length-l, self.state_dim, self.control_dim),
+        )
+
+
+        """
+
+        """
         Erzeugen der Input Matrizen, neue Version (Einsen nur auf der Diagonale)
         B = np.zeros(n,l*m)
         for i in range(l):
             B[i][i] = 1
-            
-            
+
+
         def B_i(i):
             if (i>l):
             raise ValueError(
                 f'Only l matrices are produced for controllability, but i is greater than l'
-            return B[:][i*(m-1)+1:i*m]    
+            return B[:][i*(m-1)+1:i*m]
         """
 
         """

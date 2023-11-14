@@ -1,8 +1,7 @@
 import pathlib
 
 import pipeline
-from models import ControllableReLiNetModel
-from deepsysid.models.recurrent import LSTMInitModel
+from IdentityMatrixMethod import ControllableReLiNetModel
 
 
 def test_ControllableReLiNet_model(tmp_path: pathlib.Path) -> None:
@@ -31,6 +30,7 @@ def main() -> None:
     tmp_path = pathlib.Path('tmp')
     tmp_path.mkdir(exist_ok=True)
     test_ControllableReLiNet_model(tmp_path)
+
 
 
 if __name__ == '__main__':
