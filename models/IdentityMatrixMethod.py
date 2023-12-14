@@ -7,8 +7,9 @@ import math
 from deepsysid.models.switching.switchrnn import SwitchingLSTMBaseModel, SwitchingLSTMBaseModelConfig
 from deepsysid.networks.switching import SwitchingBaseLSTM, SwitchingLSTMOutput, UnconstrainedSwitchingLSTM
 import torch.nn as nn
+from torch.nn import LSTM
 
-class ControllableReLiNet(SwitchingBaseLSTM):
+class ControllableReLiNetIdent(SwitchingBaseLSTM):
     def __init__(
         self,
         control_dim: int,
@@ -45,7 +46,7 @@ class ControllableReLiNet(SwitchingBaseLSTM):
         )"""
 
         self.gen_A = nn.Linear(
-            in_features=recurrent_dim, out_features=state_dim, bias=True
+            in_features=recurrent_dim, out_features=state_dim * state_dim, bias=True
         )
         self.gen_B = nn.Linear(
             in_features=recurrent_dim, out_features=state_dim * control_dim, bias=True
@@ -83,53 +84,35 @@ class ControllableReLiNet(SwitchingBaseLSTM):
             (batch_size, sequence_length, self.state_dim, self.state_dim),
         )
 
-        n = self.state_dimension
-        m = self.control_dimension
+        n = self.state_dim
+        m = self.control_dim
         l = math.ceil(n/m)
-        K_c = torch.zeros(n, l * m)
         B = torch.zeros(batch_size, sequence_length, self.state_dim, self.control_dim)
 
-        K_c[:, :n] = torch.eye(n)
-
-        for batch in batch_size:
-            for t in range(l):
-                "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
-                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0), 3, dim=2))[t, :, :]
-
-        B[:, l+1:, :, :] = torch.reshape(
+        B[:, :, :, :] = torch.reshape(
             self.gen_B.forward(x),
-            (batch_size, sequence_length-l, self.state_dim, self.control_dim),
+            (batch_size, sequence_length, self.state_dim, self.control_dim),
         )
+
+        "K_c = np.zeros_like(control, shape=[n, l*m])"
+        K_c = torch.zeros([batch_size, n, l*m], device=control.device)
+        K_c[:, :, :n] = torch.eye(n)
+        for batch in range(batch_size):
+            for t in range(l):
+                B[batch, t, :, :] = torch.cat(torch.split(K_c[batch].unsqueeze(0), split_size_or_sections=m, dim=2))[t, :, :]
 
         """
         method 3: construction of K_c via multiplication
-
+        
+        B[:, :, :, :] = torch.reshape(
+            self.gen_B.forward(x),
+            (batch_size, sequence_length, self.state_dim, self.control_dim),
+        )
+        
         for batch in batch_size:
             K_c[:, :n] = torch.eye(n)
             for t in range(l):
-                "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
-                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0), 3, dim=2))[t, :, :]
-
-        B[:, l+1:, :, :] = torch.reshape(
-            self.gen_B.forward(x),
-            (batch_size, sequence_length-l, self.state_dim, self.control_dim),
-        )
-
-
-        """
-
-        """
-        Erzeugen der Input Matrizen, neue Version (Einsen nur auf der Diagonale)
-        B = np.zeros(n,l*m)
-        for i in range(l):
-            B[i][i] = 1
-
-
-        def B_i(i):
-            if (i>l):
-            raise ValueError(
-                f'Only l matrices are produced for controllability, but i is greater than l'
-            return B[:][i*(m-1)+1:i*m]
+                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0), 3, dim=2))[t, :, :]    
         """
 
         """
@@ -147,10 +130,6 @@ class ControllableReLiNet(SwitchingBaseLSTM):
             "last zeros part"
             if (i < l):
                 np.zeros((n-l+m, m))
-        """
-
-        """
-        Pseudo Code Methode 3(2 Matrizen full rank):
         """
 
         states = torch.zeros(
@@ -183,7 +162,6 @@ class ControllableReLiNet(SwitchingBaseLSTM):
         )
 
     @property
-    @abc.abstractmethod
     def output_matrix(self) -> torch.Tensor:
         """
         :returns: .shape = (output, state)
@@ -191,17 +169,14 @@ class ControllableReLiNet(SwitchingBaseLSTM):
         return self.C.weight
 
     @property
-    @abc.abstractmethod
     def control_dimension(self) -> int:
         return self.control_dim
 
     @property
-    @abc.abstractmethod
     def state_dimension(self) -> int:
         return self.state_dim
 
     @property
-    @abc.abstractmethod
     def output_dimension(self) -> int:
         return self.output_dim
 
@@ -211,7 +186,7 @@ class ControllableReLiNetModelConfig(SwitchingLSTMBaseModelConfig):
     pass
 
 
-class ControllableReLiNetModel(SwitchingLSTMBaseModel):
+class ControllableReLiNetIdentModel(SwitchingLSTMBaseModel):
     CONFIG = ControllableReLiNetModelConfig
 
     def __init__(self, config: ControllableReLiNetModelConfig) -> None:
@@ -220,7 +195,7 @@ class ControllableReLiNetModel(SwitchingLSTMBaseModel):
         else:
             state_dim = config.switched_system_state_dim
 
-        predictor = UnconstrainedSwitchingLSTM(
+        predictor = ControllableReLiNetIdent(
             control_dim=len(config.control_names),
             state_dim=state_dim,
             output_dim=len(config.state_names),

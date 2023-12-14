@@ -7,8 +7,10 @@ import math
 from deepsysid.models.switching.switchrnn import SwitchingLSTMBaseModel, SwitchingLSTMBaseModelConfig
 from deepsysid.networks.switching import SwitchingBaseLSTM, SwitchingLSTMOutput, UnconstrainedSwitchingLSTM
 import torch.nn as nn
+from torch.nn import LSTM
 
-class ControllableReLiNet(SwitchingBaseLSTM):
+
+class ControllableReLiNetSVD(SwitchingBaseLSTM):
     def __init__(
         self,
         control_dim: int,
@@ -83,13 +85,38 @@ class ControllableReLiNet(SwitchingBaseLSTM):
             (batch_size, sequence_length, self.state_dim, self.state_dim),
         )
 
-        n = self.state_dimension
-        m = self.control_dimension
+        n = self.state_dim
+        m = self.control_dim
         l = math.ceil(n/m)
         K_c = torch.zeros(n, l * m)
         B = torch.zeros(batch_size, sequence_length, self.state_dim, self.control_dim)
 
-        K_c[:, :n] = torch.eye(n)
+        "Theta erzeugen"
+
+        "U und V generieren"
+        gen_U = nn.Linear(
+            in_features=self.recurrent_dim, out_features=self.state_dim * self.state_dim, bias=True
+        )
+        U = torch.reshape(
+            gen_U.forward(x),
+            (batch_size, self.state_dim, self.state_dim),
+        )
+
+        gen_V = nn.Linear(
+            in_features=self.recurrent_dim, out_features=self.control_dim * self.control_dim, bias=True
+        )
+        V = torch.reshape(
+            gen_V.forward(x),
+            (batch_size, self.control_dim, self.control_dim),
+        )
+
+        "Gram Schmidt für jeweils U und V"
+
+        "U * Theta * V:"
+
+        "temp_K_c = torch.matmul(U, Theta)"
+
+        "K_c = torch.matmul(temp_K_c, V)"
 
         for batch in batch_size:
             for t in range(l):
@@ -183,7 +210,6 @@ class ControllableReLiNet(SwitchingBaseLSTM):
         )
 
     @property
-    @abc.abstractmethod
     def output_matrix(self) -> torch.Tensor:
         """
         :returns: .shape = (output, state)
@@ -191,17 +217,14 @@ class ControllableReLiNet(SwitchingBaseLSTM):
         return self.C.weight
 
     @property
-    @abc.abstractmethod
     def control_dimension(self) -> int:
         return self.control_dim
 
     @property
-    @abc.abstractmethod
     def state_dimension(self) -> int:
         return self.state_dim
 
     @property
-    @abc.abstractmethod
     def output_dimension(self) -> int:
         return self.output_dim
 
@@ -211,7 +234,7 @@ class ControllableReLiNetModelConfig(SwitchingLSTMBaseModelConfig):
     pass
 
 
-class ControllableReLiNetModel(SwitchingLSTMBaseModel):
+class ControllableReLiNetSVDModel(SwitchingLSTMBaseModel):
     CONFIG = ControllableReLiNetModelConfig
 
     def __init__(self, config: ControllableReLiNetModelConfig) -> None:
@@ -220,7 +243,7 @@ class ControllableReLiNetModel(SwitchingLSTMBaseModel):
         else:
             state_dim = config.switched_system_state_dim
 
-        predictor = UnconstrainedSwitchingLSTM(
+        predictor = ControllableReLiNetSVD(
             control_dim=len(config.control_names),
             state_dim=state_dim,
             output_dim=len(config.state_names),
