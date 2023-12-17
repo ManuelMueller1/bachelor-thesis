@@ -46,7 +46,7 @@ class ControllableReLiNet2MM(SwitchingBaseLSTM):
         )"""
 
         self.gen_A = nn.Linear(
-            in_features=recurrent_dim, out_features=state_dim, bias=True
+            in_features=recurrent_dim, out_features=state_dim * state_dim, bias=True
         )
         self.gen_B = nn.Linear(
             in_features=recurrent_dim, out_features=state_dim * control_dim, bias=True
@@ -77,7 +77,10 @@ class ControllableReLiNet2MM(SwitchingBaseLSTM):
         sequence_length = control.shape[1]
 
         x, (h0, c0) = self.lstm.forward(control, hx=hx)
+        "x_c im originalen Format des hidden States: x[batch, t, :]"
+        x_c = x
         x = torch.reshape(x, (batch_size * sequence_length, self.recurrent_dim))
+
 
         A = torch.reshape(
             self.gen_A.forward(x),
@@ -90,56 +93,59 @@ class ControllableReLiNet2MM(SwitchingBaseLSTM):
         K_c = torch.zeros([batch_size, n, l*m], device=control.device)
         B = torch.zeros(batch_size, sequence_length, self.state_dim, self.control_dim)
 
-        "generieren von P"
+        x_p = torch.reshape(x_c[:, :l, :], (batch_size, self.recurrent_dim * l))
+        x_q = torch.reshape(x_c[:, :l, :], (batch_size*l, self.recurrent_dim))
+
+        "generieren von P aus ersten l Timesteps"
         gen_P = nn.Linear(
-            in_features=self.recurrent_dim, out_features=self.state_dim * self.state_dim, bias=True
-        )
-        P = torch.reshape(
-            gen_P.forward(x),
-            (batch_size, self.state_dim, self.state_dim),
+            in_features=self.recurrent_dim * l, out_features=self.state_dim * self.state_dim, bias=True
         )
 
-        "x[:][:l]"
-
-        "generieren von Q"
-
+        "Q Init"
         Q = torch.zeros([batch_size, l, n, m], device=control.device)
+        "generieren von Q"
         gen_Q = nn.Linear(
             in_features=self.recurrent_dim, out_features=self.state_dim * self.control_dim, bias=True
         )
 
-        for batch in range(batch_size):
-            for t in range(l):
-                Q[batch, t, :, :] = torch.reshape(
-                    gen_Q.forward(x[(batch*batch_size)+t, :]),
-                    (self.state_dim, self.control_dim),
+
+        Q = torch.reshape(
+            gen_Q.forward(x_q),
+            (batch_size, l, self.state_dim, self.control_dim),
                 )
 
         "Kopplungsterm"
-        kopplung = np.zeros_like(control, shape=[n, l*m])
-        kopplung[:, :n] = torch.eye(n)
-
-        temp_K_c = np.dot(P, kopplung)
+        "kopplung = torch.zeros([n, n], device=control.device)"
+        kopplung = torch.eye(n, device=control.device)
 
         "K_c = P * kopplung * Q"
         "temp_K_c = torch.matmul(P, kopplung)"
         "K_c = torch.matmul(temp_K_c, Q)"
 
-        for batch in batch_size:
-            for t in range(l):
-                "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
-                B[batch, t, :, :] = np.dot(temp_K_c, B[t])
 
-        B[:, l+1:, :, :] = torch.reshape(
+        "Init P"
+        P = torch.zeros((batch_size, self.state_dim, self.state_dim), device=control.device)
+
+        "learning P"
+        P = torch.reshape(
+            gen_P.forward(x_p),
+            (batch_size, self.state_dim, self.state_dim),
+        )
+        "Erzeugen von B normal"
+        B[:, :, :, :] = torch.reshape(
             self.gen_B.forward(x),
-            (batch_size, sequence_length-l, self.state_dim, self.control_dim),
+            (batch_size, sequence_length, self.state_dim, self.control_dim),
         )
 
-        """
-        method 3: construction of K_c via multiplication
+        "Überschreiben von B für die l ersten Timesteps jedes Batches"
+        for batch in range(batch_size):
+            "erzeugen von P * I"
+            temp_K_c = P[batch, :, :] @ kopplung
+            for t in range(l):
+                "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
+                B[batch, t, :, :] = temp_K_c @  Q[batch, t, :, :]
 
-        Pseudo Code Methode 3(2 Matrizen full rank):
-        """
+
 
         states = torch.zeros(
             size=(batch_size, sequence_length, self.state_dim), device=control.device
