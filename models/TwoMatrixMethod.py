@@ -53,6 +53,16 @@ class ControllableReLiNet2MM(SwitchingBaseLSTM):
         )
         self.C = nn.Linear(in_features=state_dim, out_features=output_dim, bias=False)
 
+        "generieren von P aus ersten l Timesteps"
+        self.gen_P = nn.Linear(
+            in_features=self.recurrent_dim * (math.ceil(state_dim/control_dim)), out_features=self.state_dim * self.state_dim, bias=True
+        )
+
+        "generieren von Q"
+        self.gen_Q = nn.Linear(
+            in_features=self.recurrent_dim, out_features=self.state_dim * self.control_dim, bias=True
+        )
+
     "@abc.abstractmethod"
     def forward(
             self,
@@ -96,39 +106,17 @@ class ControllableReLiNet2MM(SwitchingBaseLSTM):
         x_p = torch.reshape(x_c[:, :l, :], (batch_size, self.recurrent_dim * l))
         x_q = torch.reshape(x_c[:, :l, :], (batch_size*l, self.recurrent_dim))
 
-        "generieren von P aus ersten l Timesteps"
-        gen_P = nn.Linear(
-            in_features=self.recurrent_dim * l, out_features=self.state_dim * self.state_dim, bias=True
-        )
-
-        "Q Init"
-        Q = torch.zeros([batch_size, l, n, m], device=control.device)
-        "generieren von Q"
-        gen_Q = nn.Linear(
-            in_features=self.recurrent_dim, out_features=self.state_dim * self.control_dim, bias=True
-        )
-
-
         Q = torch.reshape(
-            gen_Q.forward(x_q),
+            self.gen_Q.forward(x_q),
             (batch_size, l, self.state_dim, self.control_dim),
                 )
 
-        "Kopplungsterm"
-        "kopplung = torch.zeros([n, n], device=control.device)"
-        kopplung = torch.eye(n, device=control.device)
 
-        "K_c = P * kopplung * Q"
-        "temp_K_c = torch.matmul(P, kopplung)"
-        "K_c = torch.matmul(temp_K_c, Q)"
-
-
-        "Init P"
-        P = torch.zeros((batch_size, self.state_dim, self.state_dim), device=control.device)
+        "K_c = P @ Q"
 
         "learning P"
         P = torch.reshape(
-            gen_P.forward(x_p),
+            self.gen_P.forward(x_p),
             (batch_size, self.state_dim, self.state_dim),
         )
         "Erzeugen von B normal"
@@ -139,13 +127,8 @@ class ControllableReLiNet2MM(SwitchingBaseLSTM):
 
         "Überschreiben von B für die l ersten Timesteps jedes Batches"
         for batch in range(batch_size):
-            "erzeugen von P * I"
-            temp_K_c = P[batch, :, :] @ kopplung
             for t in range(l):
-                "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
-                B[batch, t, :, :] = temp_K_c @  Q[batch, t, :, :]
-
-
+                B[batch, t, :, :] = P[batch, :, :] @  Q[batch, t, :, :]
 
         states = torch.zeros(
             size=(batch_size, sequence_length, self.state_dim), device=control.device
