@@ -2,12 +2,12 @@ import pathlib
 
 import pipeline
 
-from models.IdentityMatrixMethod import ControllableReLiNetIdentModel
+from ControllableModels.IdentityMatrixMethod import ControllableReLiNetIdentModel
 
 
 def test_ControllableReLiNetIdentModel(tmp_path: pathlib.Path) -> None:
     model_name = 'ControllableReLiNetIdent'
-    model_class = 'models.IdentityMatrixMethod.ControllableReLiNetIdentModel'
+    model_class = 'ControllableModels.IdentityMatrixMethod.ControllableReLiNetIdentModel'
     config = ControllableReLiNetIdentModel.CONFIG(
         control_names=pipeline.get_4dof_ship_control_names(),
         state_names=pipeline.get_4dof_ship_state_names(),

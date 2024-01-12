@@ -9,7 +9,7 @@ from deepsysid.networks.switching import SwitchingBaseLSTM, SwitchingLSTMOutput,
 import torch.nn as nn
 from torch.nn import LSTM
 
-class ControllableReLiNetIdent(SwitchingBaseLSTM):
+class ControllableReLiNet2MM(SwitchingBaseLSTM):
     def __init__(
         self,
         control_dim: int,
@@ -53,6 +53,16 @@ class ControllableReLiNetIdent(SwitchingBaseLSTM):
         )
         self.C = nn.Linear(in_features=state_dim, out_features=output_dim, bias=False)
 
+        "generieren von P aus ersten l Timesteps"
+        self.gen_P = nn.Linear(
+            in_features=self.recurrent_dim * (math.ceil(state_dim/control_dim)), out_features=self.state_dim * self.state_dim, bias=True
+        )
+
+        "generieren von Q"
+        self.gen_Q = nn.Linear(
+            in_features=self.recurrent_dim, out_features=self.state_dim * self.control_dim, bias=True
+        )
+
     "@abc.abstractmethod"
     def forward(
             self,
@@ -77,7 +87,10 @@ class ControllableReLiNetIdent(SwitchingBaseLSTM):
         sequence_length = control.shape[1]
 
         x, (h0, c0) = self.lstm.forward(control, hx=hx)
+        "x_c im originalen Format des hidden States: x[batch, t, :]"
+        x_c = x
         x = torch.reshape(x, (batch_size * sequence_length, self.recurrent_dim))
+
 
         A = torch.reshape(
             self.gen_A.forward(x),
@@ -87,50 +100,35 @@ class ControllableReLiNetIdent(SwitchingBaseLSTM):
         n = self.state_dim
         m = self.control_dim
         l = math.ceil(n/m)
+        K_c = torch.zeros([batch_size, n, l*m], device=control.device)
         B = torch.zeros(batch_size, sequence_length, self.state_dim, self.control_dim)
 
+        x_p = torch.reshape(x_c[:, :l, :], (batch_size, self.recurrent_dim * l))
+        x_q = torch.reshape(x_c[:, :l, :], (batch_size*l, self.recurrent_dim))
+
+        Q = torch.reshape(
+            self.gen_Q.forward(x_q),
+            (batch_size, l, self.state_dim, self.control_dim),
+                )
+
+
+        "K_c = P @ Q"
+
+        "learning P"
+        P = torch.reshape(
+            self.gen_P.forward(x_p),
+            (batch_size, self.state_dim, self.state_dim),
+        )
+        "Erzeugen von B normal"
         B[:, :, :, :] = torch.reshape(
             self.gen_B.forward(x),
             (batch_size, sequence_length, self.state_dim, self.control_dim),
         )
 
-        "K_c = np.zeros_like(control, shape=[n, l*m])"
-        K_c = torch.zeros([batch_size, n, l*m], device=control.device)
-        K_c[:, :, :n] = torch.eye(n)
+        "Überschreiben von B für die l ersten Timesteps jedes Batches"
         for batch in range(batch_size):
             for t in range(l):
-                B[batch, t, :, :] = torch.cat(torch.split(K_c[batch].unsqueeze(0), split_size_or_sections=m, dim=2))[t, :, :]
-
-        """
-        method 3: construction of K_c via multiplication
-        
-        B[:, :, :, :] = torch.reshape(
-            self.gen_B.forward(x),
-            (batch_size, sequence_length, self.state_dim, self.control_dim),
-        )
-        
-        for batch in batch_size:
-            K_c[:, :n] = torch.eye(n)
-            for t in range(l):
-                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0), 3, dim=2))[t, :, :]    
-        """
-
-        """
-        "Version wie in Proposal beschrieben"
-        def B_Controllable(i):
-           "first zeros part"
-            if(i>1):
-                if(i<l):
-                    np.zeros((i*m,m))
-                else:
-                    np.zeros((n-m,m))
-           "Identity part"
-           np.identity(n)
-
-            "last zeros part"
-            if (i < l):
-                np.zeros((n-l+m, m))
-        """
+                B[batch, t, :, :] = P[batch, :, :] @  Q[batch, t, :, :]
 
         states = torch.zeros(
             size=(batch_size, sequence_length, self.state_dim), device=control.device
@@ -182,11 +180,10 @@ class ControllableReLiNetIdent(SwitchingBaseLSTM):
 
 
 
-class ControllableReLiNetModelConfig(SwitchingLSTMBaseModelConfig):
+class ControllableReLiNetModelConfig(deepsysid.models.recurrent.SeparateInitializerRecurrentNetworkModelConfig):
     pass
 
-
-class ControllableReLiNetIdentModel(SwitchingLSTMBaseModel):
+class ControllableReLiNet2MMModel(SwitchingLSTMBaseModel):
     CONFIG = ControllableReLiNetModelConfig
 
     def __init__(self, config: ControllableReLiNetModelConfig) -> None:
@@ -195,7 +192,7 @@ class ControllableReLiNetIdentModel(SwitchingLSTMBaseModel):
         else:
             state_dim = config.switched_system_state_dim
 
-        predictor = ControllableReLiNetIdent(
+        predictor = ControllableReLiNet2MM(
             control_dim=len(config.control_names),
             state_dim=state_dim,
             output_dim=len(config.state_names),

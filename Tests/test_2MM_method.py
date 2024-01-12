@@ -2,12 +2,12 @@ import pathlib
 
 import pipeline
 
-from models.TwoMatrixMethod import ControllableReLiNet2MMModel
+from ControllableModels.TwoMatrixMethod import ControllableReLiNet2MMModel
 
 
 def test_ControllableReLiNet2MMModel(tmp_path: pathlib.Path) -> None:
     model_name = 'ControllableReLiNet2MM'
-    model_class = 'models.TwoMatrixMethod.ControllableReLiNet2MMModel'
+    model_class = 'ControllableModels.TwoMatrixMethod.ControllableReLiNet2MMModel'
     config = ControllableReLiNet2MMModel.CONFIG(
         control_names=pipeline.get_4dof_ship_control_names(),
         state_names=pipeline.get_4dof_ship_state_names(),

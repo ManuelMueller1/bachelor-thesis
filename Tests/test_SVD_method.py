@@ -2,12 +2,12 @@ import pathlib
 
 import pipeline
 
-from models.SVDMethod import ControllableReLiNetSVDModel
+from ControllableModels.SVDMethod import ControllableReLiNetSVDModel
 
 
 def test_ControllableReLiNetSVDModel(tmp_path: pathlib.Path) -> None:
     model_name = 'ControllableReLiNetSVD'
-    model_class = 'models.SVDMethod.ControllableReLiNetSVDModel'
+    model_class = 'ControllableModels.SVDMethod.ControllableReLiNetSVDModel'
     config = ControllableReLiNetSVDModel.CONFIG(
         control_names=pipeline.get_4dof_ship_control_names(),
         state_names=pipeline.get_4dof_ship_state_names(),

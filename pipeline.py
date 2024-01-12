@@ -305,7 +305,7 @@ def get_evaluation_mode() -> Literal['train', 'validation', 'test']:
 def prepare_directories(
     base_path: pathlib.Path,
 ) -> Dict[str, pathlib.Path]:
-    models_directory = base_path.joinpath('models')
+    models_directory = base_path.joinpath('ControllableModels')
     models_directory.mkdir(exist_ok=True)
 
     dataset_directory = base_path.joinpath('data')
