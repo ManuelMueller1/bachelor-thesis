@@ -179,9 +179,18 @@ class ControllableReLiNet2MM(SwitchingBaseLSTM):
         return self.output_dim
 
 
-
+"""
 class ControllableReLiNetModelConfig(deepsysid.models.recurrent.SeparateInitializerRecurrentNetworkModelConfig):
-    pass
+    recurrent_dim: int
+    num_recurrent_layers: int
+    dropout: float
+    sequence_length =
+    learning_rate =
+    batch_size =
+    epochs_initializer =
+    epochs_predictor =
+    loss = deepsysid.metrics.NormalizedRootMeanSquaredErrorMetric
+    """
 
 class ControllableReLiNet2MMModel(SwitchingLSTMBaseModel):
     CONFIG = ControllableReLiNetModelConfig

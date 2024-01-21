@@ -1,6 +1,7 @@
 import abc
 from typing import Optional, Tuple
 
+import deepsysid.metrics
 import numpy as np
 import torch
 import math
@@ -8,6 +9,7 @@ from deepsysid.models.switching.switchrnn import SwitchingLSTMBaseModel, Switchi
 from deepsysid.networks.switching import SwitchingBaseLSTM, SwitchingLSTMOutput, UnconstrainedSwitchingLSTM
 import torch.nn as nn
 from torch.nn import LSTM
+from typing import Literal
 
 
 
@@ -141,9 +143,15 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
             self.gen_B.forward(x),
             (batch_size, sequence_length, self.state_dim, self.control_dim),
         )
+
         "Theta erzeugen"
+        theta = torch.zeros([batch_size, n, n], device=control.device)
+
 
         "U und V generieren"
+        "init"
+        U = torch.zeros([batch_size, n, n], device=control.device)
+        V = torch.zeros([batch_size, n, l*m], device=control.device)
 
         U = torch.reshape(
             self.gen_U.forward(x),
@@ -152,7 +160,7 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
 
         V = torch.reshape(
             self.gen_V.forward(x),
-            (batch_size, self.control_dim, self.control_dim),
+            (batch_size, self.state_dim, self.control_dim * l),
         )
 
         "Gram Schmidt für jeweils U und V"
@@ -272,18 +280,17 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
 
 
 
-class ControllableReLiNetModelConfig(deepsysid.models.recurrent.SeparateInitializerRecurrentNetworkModelConfig):
+class ControllableReLiNetModelConfig(SwitchingLSTMBaseModelConfig):
     "SwitchingLSTMBaseModelConfig"
-    """recurrent_dim =
-    num_recurrent_layers =
-    dropout =
-    sequence_length =
-    learning_rate =
-    batch_size =
-    epochs_initializer =
-    epochs_predictor =
-    loss ="""
-    pass
+    recurrent_dim : int
+    num_recurrent_layers: int
+    dropout: float
+    sequence_length:int
+    learning_rate: float
+    batch_size: int
+    epochs_initializer: int
+    epochs_predictor: int
+    loss = Literal['mse', 'msge']
 
 
 class ControllableReLiNetSVDModel(SwitchingLSTMBaseModel):
