@@ -10,6 +10,9 @@ from deepsysid.networks.switching import SwitchingBaseLSTM, SwitchingLSTMOutput,
 import torch.nn as nn
 from torch.nn import LSTM
 
+from ControllableModels.SVDMethod import ControllableReLiNetModelConfig
+
+
 class ControllableReLiNetIdent(SwitchingBaseLSTM):
     def __init__(
         self,
@@ -182,19 +185,6 @@ class ControllableReLiNetIdent(SwitchingBaseLSTM):
         return self.output_dim
 
 
-"""
-class ControllableReLiNetModelConfig(SwitchingLSTMBaseModelConfig):
-    "SwitchingLSTMBaseModelConfig"
-    recurrent_dim : int
-    num_recurrent_layers: int
-    dropout: float
-    sequence_length =
-    learning_rate =
-    batch_size =
-    epochs_initializer =
-    epochs_predictor =
-    loss = deepsysid.metrics.NormalizedRootMeanSquaredErrorMetric
-"""
 
 class ControllableReLiNetIdentModel(SwitchingLSTMBaseModel):
     CONFIG = ControllableReLiNetModelConfig

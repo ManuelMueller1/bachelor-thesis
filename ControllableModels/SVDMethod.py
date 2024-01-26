@@ -12,17 +12,6 @@ from torch.nn import LSTM
 from typing import Literal
 
 
-
-
-if __name__ == '__main__':
-    torch.autograd.set_detect_anomaly(True)
-    a = torch.randn(5, 5, requires_grad=True)
-    b = gram_schmidt(a)
-    c = b.sum()
-    c.backward()
-    print(b.matmul(b.t()))
-    print(a.grad)
-
 class ControllableReLiNetSVD(SwitchingBaseLSTM):
     def __init__(
         self,
@@ -62,25 +51,7 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
         "code from Github User legendongary"
         "https://github.com/legendongary/pytorch-gram-schmidt/blob/master/gram_schmidt.py"
 
-        def gram_schmidt(vv):
-            def projection(u, v):
-                return (v * u).sum() / (u * u).sum() * u
-
-            nk = vv.size(0)
-            uu = torch.zeros_like(vv, device=vv.device)
-            uu[:, 0] = vv[:, 0].clone()
-            for k in range(1, nk):
-                vk = vv[k].clone()
-                uk = 0
-                for j in range(0, k):
-                    uj = uu[:, j].clone()
-                    uk = uk + projection(uj, vk)
-                uu[:, k] = vk - uk
-            for k in range(nk):
-                uk = uu[:, k].clone()
-                uu[:, k] = uk / uk.norm()
-            return uu
-
+        l = math.ceil(self.state_dim/self.control_dim)
         self.gen_A = nn.Linear(
             in_features=recurrent_dim, out_features=state_dim * state_dim, bias=True
         )
@@ -90,11 +61,34 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
         self.C = nn.Linear(in_features=state_dim, out_features=output_dim, bias=False)
 
         self.gen_U = nn.Linear(
-            in_features=self.recurrent_dim, out_features=self.state_dim * self.state_dim, bias=True
+            in_features=self.recurrent_dim * l, out_features=self.state_dim * self.state_dim, bias=True
         )
         self.gen_V = nn.Linear(
-            in_features=self.recurrent_dim, out_features=self.control_dim * self.control_dim, bias=True
+            in_features=self.recurrent_dim * l, out_features=self.control_dim * l * self.control_dim * l, bias=True
         )
+
+        self.gen_theta = nn.Linear(
+            in_features=self.recurrent_dim * l, out_features= self.state_dim, bias=True
+        )
+
+    def gram_schmidt(self, vv):
+        def projection(u, v):
+            return (v * u).sum() / (u * u).sum() * u
+
+        nk = vv.size(0)
+        uu = torch.zeros_like(vv, device=vv.device)
+        uu[:, 0] = vv[:, 0].clone()
+        for k in range(1, nk):
+            vk = vv[k].clone()
+            uk = 0
+            for j in range(0, k):
+                uj = uu[:, j].clone()
+                uk = uk + projection(uj, vk)
+            uu[:, k] = vk - uk
+        for k in range(nk):
+            uk = uu[:, k].clone()
+            uu[:, k] = uk / uk.norm()
+        return uu
 
     "@abc.abstractmethod"
     def forward(
@@ -122,7 +116,7 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
         x, (h0, c0) = self.lstm.forward(control, hx=hx)
 
         "x_c im originalen Format des hidden States: x[batch, t, :]"
-        x_c = x
+        x_c = x[:, :(math.ceil(self.state_dim / self.control_dim)), :]
 
         x = torch.reshape(x, (batch_size * sequence_length, self.recurrent_dim))
 
@@ -130,7 +124,6 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
             self.gen_A.forward(x),
             (batch_size, sequence_length, self.state_dim, self.state_dim),
         )
-
 
         n = self.state_dim
         m = self.control_dim
@@ -145,90 +138,51 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
         )
 
         "Theta erzeugen"
-        theta = torch.zeros([batch_size, n, n], device=control.device)
-
+        "thetas: einzelne Singulärwerte, theta: Singulärwertematrix"
+        theta = torch.zeros([batch_size, n, l*m], device=control.device)
+        x_c = x_c.reshape(batch_size, -1)
+        thetas = torch.reshape(
+            self.gen_theta.forward(x_c),
+            (batch_size, self.state_dim),
+        )
+        for batch in range(batch_size):
+            theta[batch, :, :n] = torch.diag(thetas[batch, :], diagonal=0)
 
         "U und V generieren"
         "init"
         U = torch.zeros([batch_size, n, n], device=control.device)
-        V = torch.zeros([batch_size, n, l*m], device=control.device)
+        V = torch.zeros([batch_size, l*m, l*m], device=control.device)
 
         U = torch.reshape(
-            self.gen_U.forward(x),
+            self.gen_U.forward(x_c),
             (batch_size, self.state_dim, self.state_dim),
         )
 
         V = torch.reshape(
-            self.gen_V.forward(x),
-            (batch_size, self.state_dim, self.control_dim * l),
+            self.gen_V.forward(x_c),
+            (batch_size, self.control_dim * l, self.control_dim * l),
         )
 
         "Gram Schmidt für jeweils U und V"
+        U = self.gram_schmidt(U)
+        V = self.gram_schmidt(V)
+
 
         "U * Theta * V:"
-
         "temp_K_c = torch.matmul(U, Theta)"
-
+        temp_K_c = torch.zeros()
+        """temp_K_c[batch, :, :] = U[batch, :, :] @ theta[batch, :, :]
         "K_c = torch.matmul(temp_K_c, V)"
+        K_c[batch, :, :] = temp_K_c[batch, :, :] @ V[batch, :, :]
+        "dot_product = torch.einsum('bij,bj->bi')"
+        """
 
         for batch in batch_size:
+            temp_K_c[batch, :, :] = U[batch, :, :] @ theta[batch, :, :]
+            K_c[batch, :, :] = temp_K_c[batch, :, :] @ V[batch, :, :]
             for t in range(l):
-                "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
-                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0), 3, dim=2))[t, :, :]
+                B[batch, t, :, :] = torch.cat(torch.split(K_c[batch].unsqueeze(0), split_size_or_sections=m, dim=2))[t, :, :]
 
-
-
-        """
-        method 3: construction of K_c via multiplication
-
-        for batch in batch_size:
-            K_c[:, :n] = torch.eye(n)
-            for t in range(l):
-                "B[batch, t, :, :] = K_c[:][t*m:(t+1)*m-1]"
-                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0), 3, dim=2))[t, :, :]
-
-        B[:, l+1:, :, :] = torch.reshape(
-            self.gen_B.forward(x),
-            (batch_size, sequence_length-l, self.state_dim, self.control_dim),
-        )
-
-
-        """
-
-        """
-        Erzeugen der Input Matrizen, neue Version (Einsen nur auf der Diagonale)
-        B = np.zeros(n,l*m)
-        for i in range(l):
-            B[i][i] = 1
-
-
-        def B_i(i):
-            if (i>l):
-            raise ValueError(
-                f'Only l matrices are produced for controllability, but i is greater than l'
-            return B[:][i*(m-1)+1:i*m]
-        """
-
-        """
-        "Version wie in Proposal beschrieben"
-        def B_Controllable(i):
-           "first zeros part"
-            if(i>1):
-                if(i<l):
-                    np.zeros((i*m,m))
-                else:
-                    np.zeros((n-m,m))
-           "Identity part"
-           np.identity(n)
-
-            "last zeros part"
-            if (i < l):
-                np.zeros((n-l+m, m))
-        """
-
-        """
-        Pseudo Code Methode 3(2 Matrizen full rank):
-        """
 
         states = torch.zeros(
             size=(batch_size, sequence_length, self.state_dim), device=control.device
@@ -282,7 +236,7 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
 
 class ControllableReLiNetModelConfig(SwitchingLSTMBaseModelConfig):
     "SwitchingLSTMBaseModelConfig"
-    recurrent_dim : int
+    """recurrent_dim : int
     num_recurrent_layers: int
     dropout: float
     sequence_length:int
@@ -290,7 +244,8 @@ class ControllableReLiNetModelConfig(SwitchingLSTMBaseModelConfig):
     batch_size: int
     epochs_initializer: int
     epochs_predictor: int
-    loss = Literal['mse', 'msge']
+    loss: Literal['mse', 'msge']"""
+    pass
 
 
 class ControllableReLiNetSVDModel(SwitchingLSTMBaseModel):

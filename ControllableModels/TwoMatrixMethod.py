@@ -9,6 +9,9 @@ from deepsysid.networks.switching import SwitchingBaseLSTM, SwitchingLSTMOutput,
 import torch.nn as nn
 from torch.nn import LSTM
 
+from ControllableModels.SVDMethod import ControllableReLiNetModelConfig
+
+
 class ControllableReLiNet2MM(SwitchingBaseLSTM):
     def __init__(
         self,

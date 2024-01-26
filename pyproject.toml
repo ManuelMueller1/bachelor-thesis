@@ -10,7 +10,7 @@ packages = [{include = "ControllableModels"}]
 [tool.poetry.dependencies]
 python = "^3.10"
 deepsysid = {git = "https://github.com/AlexandraBaier/deepsysid.git"}
-torch = "^2.1.0"
+torch = "^1.13.0"
 
 
 [build-system]

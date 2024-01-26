@@ -7,7 +7,7 @@ def main() -> None:
     tmp_path = pathlib.Path('tmp')
     tmp_path.mkdir(exist_ok=True)
     test_ControllableReLiNetIdentModel(tmp_path)
-    "test_ControllableReLiNetSVDModel(tmp_path)"
+    test_ControllableReLiNetSVDModel(tmp_path)
     test_ControllableReLiNet2MMModel(tmp_path)
 
 
