@@ -128,7 +128,7 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
         n = self.state_dim
         m = self.control_dim
         l = math.ceil(n/m)
-        K_c = torch.zeros(n, l * m)
+        K_c = torch.zeros([batch_size, n, l * m])
         B = torch.zeros(batch_size, sequence_length, self.state_dim, self.control_dim)
 
         "Erzeugen von B normal"
@@ -164,22 +164,24 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
         )
 
         "Gram Schmidt für jeweils U und V"
-        U = self.gram_schmidt(U)
-        V = self.gram_schmidt(V)
+        #for- Schleife für Batches
+        for batch in range(batch_size):
+            U[batch, :, :] = self.gram_schmidt(U[batch, :, :])
+            V[batch, :, :] = self.gram_schmidt(V[batch, :, :])
 
 
         "U * Theta * V:"
         "temp_K_c = torch.matmul(U, Theta)"
-        temp_K_c = torch.zeros()
+        temp_K_c = torch.zeros([n, l*m], device= control.device)
         """temp_K_c[batch, :, :] = U[batch, :, :] @ theta[batch, :, :]
         "K_c = torch.matmul(temp_K_c, V)"
         K_c[batch, :, :] = temp_K_c[batch, :, :] @ V[batch, :, :]
         "dot_product = torch.einsum('bij,bj->bi')"
         """
 
-        for batch in batch_size:
-            temp_K_c[batch, :, :] = U[batch, :, :] @ theta[batch, :, :]
-            K_c[batch, :, :] = temp_K_c[batch, :, :] @ V[batch, :, :]
+        for batch in range(batch_size):
+            temp_K_c = U[batch, :, :] @ theta[batch, :, :]
+            K_c[batch, :, :] = temp_K_c @ V[batch, :, :]
             for t in range(l):
                 B[batch, t, :, :] = torch.cat(torch.split(K_c[batch].unsqueeze(0), split_size_or_sections=m, dim=2))[t, :, :]
 
