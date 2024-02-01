@@ -129,7 +129,7 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
         m = self.control_dim
         l = math.ceil(n/m)
         K_c = torch.zeros([batch_size, n, l * m], device=control.device)
-        B = torch.zeros(batch_size, sequence_length, self.state_dim, self.control_dim, device=control.device)
+        B = torch.zeros([batch_size, sequence_length, self.state_dim, self.control_dim], device=control.device)
 
         "Erzeugen von B normal"
         B[:, :, :, :] = torch.reshape(
