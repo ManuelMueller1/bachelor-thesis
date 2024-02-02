@@ -104,7 +104,7 @@ class ControllableReLiNet2MM(SwitchingBaseLSTM):
         m = self.control_dim
         l = math.ceil(n/m)
         K_c = torch.zeros([batch_size, n, l*m], device=control.device)
-        B = torch.zeros(batch_size, sequence_length, self.state_dim, self.control_dim)
+        B = torch.zeros([batch_size, sequence_length, self.state_dim, self.control_dim], device=control.device)
 
         x_p = torch.reshape(x_c[:, :l, :], (batch_size, self.recurrent_dim * l))
         x_q = torch.reshape(x_c[:, :l, :], (batch_size*l, self.recurrent_dim))

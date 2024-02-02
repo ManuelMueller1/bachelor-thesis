@@ -237,16 +237,6 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
 
 
 class ControllableReLiNetModelConfig(SwitchingLSTMBaseModelConfig):
-    "SwitchingLSTMBaseModelConfig"
-    """recurrent_dim : int
-    num_recurrent_layers: int
-    dropout: float
-    sequence_length:int
-    learning_rate: float
-    batch_size: int
-    epochs_initializer: int
-    epochs_predictor: int
-    loss: Literal['mse', 'msge']"""
     pass
 
 

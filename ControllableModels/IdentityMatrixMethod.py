@@ -91,7 +91,7 @@ class ControllableReLiNetIdent(SwitchingBaseLSTM):
         n = self.state_dim
         m = self.control_dim
         l = math.ceil(n/m)
-        B = torch.zeros(batch_size, sequence_length, self.state_dim, self.control_dim)
+        B = torch.zeros([batch_size, sequence_length, self.state_dim, self.control_dim], device= control.device)
 
         B[:, :, :, :] = torch.reshape(
             self.gen_B.forward(x),
