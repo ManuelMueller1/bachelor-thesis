@@ -44,11 +44,6 @@ class ControllableReLiNetIdent(SwitchingBaseLSTM):
             batch_first=True,
         )
 
-        """self.T = nn.Parameter(
-            torch.from_numpy(np.random.normal(0, 1, (state_dim, state_dim))).float(),
-            requires_grad=True,
-        )"""
-
         self.gen_A = nn.Linear(
             in_features=recurrent_dim, out_features=state_dim * state_dim, bias=True
         )
@@ -98,43 +93,18 @@ class ControllableReLiNetIdent(SwitchingBaseLSTM):
             (batch_size, sequence_length, self.state_dim, self.control_dim),
         )
 
-        "K_c = np.zeros_like(control, shape=[n, l*m])"
         K_c = torch.zeros([batch_size, n, l*m], device=control.device)
         K_c[:, :, :n] = torch.eye(n)
+
+        #unvectorized version of Ident method
+        """
         for batch in range(batch_size):
             for t in range(l):
                 B[batch, t, :, :] = torch.cat(torch.split(K_c[batch].unsqueeze(0), split_size_or_sections=m, dim=2))[t, :, :]
-
-        """
-        method 3: construction of K_c via multiplication
-        
-        B[:, :, :, :] = torch.reshape(
-            self.gen_B.forward(x),
-            (batch_size, sequence_length, self.state_dim, self.control_dim),
-        )
-        
-        for batch in batch_size:
-            K_c[:, :n] = torch.eye(n)
-            for t in range(l):
-                B[batch, t, :, :] = torch.cat(torch.split(K_c.unsqueeze(0), 3, dim=2))[t, :, :]    
         """
 
-        """
-        "Version wie in Proposal beschrieben"
-        def B_Controllable(i):
-           "first zeros part"
-            if(i>1):
-                if(i<l):
-                    np.zeros((i*m,m))
-                else:
-                    np.zeros((n-m,m))
-           "Identity part"
-           np.identity(n)
-
-            "last zeros part"
-            if (i < l):
-                np.zeros((n-l+m, m))
-        """
+        #vectorized version of Ident method
+        B[:, :l, :, :] = torch.stack(list(torch.split(K_c, split_size_or_sections=m, dim=2)), dim=1)
 
         states = torch.zeros(
             size=(batch_size, sequence_length, self.state_dim), device=control.device

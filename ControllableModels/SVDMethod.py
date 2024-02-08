@@ -131,25 +131,33 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
         K_c = torch.zeros([batch_size, n, l * m], device=control.device)
         B = torch.zeros([batch_size, sequence_length, self.state_dim, self.control_dim], device=control.device)
 
-        "Erzeugen von B normal"
+        #Erzeugen von B normal
         B[:, :, :, :] = torch.reshape(
             self.gen_B.forward(x),
             (batch_size, sequence_length, self.state_dim, self.control_dim),
         )
 
-        "Theta erzeugen"
-        "thetas: einzelne Singulärwerte, theta: Singulärwertematrix"
+        #Theta erzeugen
+        #thetas: einzelne Singulärwerte, theta: Singulärwertematrix
         theta = torch.zeros([batch_size, n, l*m], device=control.device)
         x_c = x_c.reshape(batch_size, -1)
         thetas = torch.reshape(
             self.gen_theta.forward(x_c),
             (batch_size, self.state_dim),
         )
+        #vectorized version of theta generation
+        theta = torch.diag_embed(thetas)
+        theta = torch.cat((theta, torch.zeros(batch_size, n, l*m-n)), dim=2)
+
+        #unvectorized version of theta generation
+        """
         for batch in range(batch_size):
             theta[batch, :, :n] = torch.diag(thetas[batch, :], diagonal=0)
+        """
 
-        "U und V generieren"
-        "init"
+
+        #U und V generieren
+        #init
         U = torch.zeros([batch_size, n, n], device=control.device)
         V = torch.zeros([batch_size, l*m, l*m], device=control.device)
 
@@ -163,27 +171,30 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
             (batch_size, self.control_dim * l, self.control_dim * l),
         )
 
-        "Gram Schmidt für jeweils U und V"
+        #Gram Schmidt für jeweils U und V
         #for- Schleife für Batches
         for batch in range(batch_size):
             U[batch, :, :] = self.gram_schmidt(U[batch, :, :])
             V[batch, :, :] = self.gram_schmidt(V[batch, :, :])
 
 
-        "U * Theta * V:"
-        "temp_K_c = torch.matmul(U, Theta)"
-        temp_K_c = torch.zeros([n, l*m], device= control.device)
-        """temp_K_c[batch, :, :] = U[batch, :, :] @ theta[batch, :, :]
-        "K_c = torch.matmul(temp_K_c, V)"
-        K_c[batch, :, :] = temp_K_c[batch, :, :] @ V[batch, :, :]
-        "dot_product = torch.einsum('bij,bj->bi')"
-        """
+        #U * Theta * V:
+        temp_K_c = torch.zeros([batch_size, n, l*m], device=control.device)
 
+        #vectorized SVD
+        temp_K_c = torch.matmul(U, theta)
+        K_c = torch.matmul(temp_K_c, V)
+        B[:, :l, :, :] = torch.stack(list(torch.split(K_c, split_size_or_sections=m, dim=2)), dim=1)
+
+        # unvectorized version of SVD
+        """
         for batch in range(batch_size):
+            
             temp_K_c = U[batch, :, :] @ theta[batch, :, :]
             K_c[batch, :, :] = temp_K_c @ V[batch, :, :]
             for t in range(l):
                 B[batch, t, :, :] = torch.cat(torch.split(K_c[batch].unsqueeze(0), split_size_or_sections=m, dim=2))[t, :, :]
+        """
 
 
         states = torch.zeros(

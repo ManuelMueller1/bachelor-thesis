@@ -109,29 +109,37 @@ class ControllableReLiNet2MM(SwitchingBaseLSTM):
         x_p = torch.reshape(x_c[:, :l, :], (batch_size, self.recurrent_dim * l))
         x_q = torch.reshape(x_c[:, :l, :], (batch_size*l, self.recurrent_dim))
 
-        Q = torch.reshape(
-            self.gen_Q.forward(x_q),
-            (batch_size, l, self.state_dim, self.control_dim),
-                )
 
 
         "K_c = P @ Q"
+        #learning Q
+        Q = torch.reshape(
+            self.gen_Q.forward(x_q),
+            (batch_size, l, self.state_dim, self.control_dim),
+        )
 
-        "learning P"
+        #learning P
         P = torch.reshape(
             self.gen_P.forward(x_p),
-            (batch_size, self.state_dim, self.state_dim),
+            (batch_size, 1, self.state_dim, self.state_dim),
         )
-        "Erzeugen von B normal"
+
+        #Erzeugen von B normal"
         B[:, :, :, :] = torch.reshape(
             self.gen_B.forward(x),
             (batch_size, sequence_length, self.state_dim, self.control_dim),
         )
 
-        "Überschreiben von B für die l ersten Timesteps jedes Batches"
+        #Überschreiben von B für die l ersten Timesteps jedes Batches
+        #unvectorized version
+        """
         for batch in range(batch_size):
             for t in range(l):
                 B[batch, t, :, :] = P[batch, :, :] @  Q[batch, t, :, :]
+        """
+
+        #vectorized version
+        B[:, :l, :, :] = torch.matmul(P, Q)
 
         states = torch.zeros(
             size=(batch_size, sequence_length, self.state_dim), device=control.device
