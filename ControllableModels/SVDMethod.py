@@ -147,7 +147,7 @@ class ControllableReLiNetSVD(SwitchingBaseLSTM):
         )
         #vectorized version of theta generation
         theta = torch.diag_embed(thetas)
-        theta = torch.cat((theta, torch.zeros(batch_size, n, l*m-n)), dim=2)
+        theta = torch.cat((theta, torch.zeros([batch_size, n, l*m-n], device=control.device)), dim=2)
 
         #unvectorized version of theta generation
         """
